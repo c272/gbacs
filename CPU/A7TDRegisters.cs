@@ -33,7 +33,7 @@ namespace gbacs
         /// Gets a given register from the bank.
         /// Indexes 0-15 are standard registers. 16 is CPSR, and 17 is SPSR.
         /// </summary>
-        public ref uint GetRegister(int regNum)
+        public ref uint Get(int regNum)
         {
             //Verify register number within bounds.
             if (regNum < 0 || regNum > 17)
