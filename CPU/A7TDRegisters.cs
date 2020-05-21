@@ -91,9 +91,18 @@ namespace gbacs
         /// <summary>
         /// Returns the value of a specific flag from the CPSR register.
         /// </summary>
-        public bool Get(Flags Flag)
+        public bool Get(Flags flag)
         {
-            return ((Get(16) >> (int)Flag) & 1) == 1;
+            return ((Get(16) >> (int)flag) & 1) == 1;
+        }
+
+        /// <summary>
+        /// Sets the flag to the provided value in the CPSR register.
+        /// </summary>
+        public void Set(Flags flag, bool val)
+        {
+            ref uint cpsr = ref Get(16);
+            cpsr |= (uint)(0x1 << (int)flag);
         }
     }
 

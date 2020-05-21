@@ -24,5 +24,13 @@ namespace gbacs.Extensions
         {
             return Convert.ToString(u, 2);
         }
+
+        /// <summary>
+        /// Returns whether a uint is between (inclusive) two values.
+        /// </summary>
+        public static bool Between(this uint u, uint low, uint up)
+        {
+            return (u >= low && u <= up);
+        }
     }
 }

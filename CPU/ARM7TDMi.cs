@@ -60,9 +60,8 @@ namespace gbacs
             uint cond = (instr & 0xF0000000) >> 28;
             if (!EvaluateCond(cond))
             {
-                return;
+                return; //todo: inc sp and pc
             }
-
 
             //Combine bits 27-20 and bits 7-4 to get an identifiable pattern.
             //This is stored in the lower 12 bits of the uint.
@@ -205,24 +204,16 @@ namespace gbacs
 
         /// <summary>
         /// Cycles the CPU for the given amount of ticks.
-        /// Applies a different number based on the cycle type.
         /// </summary>
         /// <param name="cycles">The amount of cycles to apply.</param>
-        /// <param name="type">The type of CPU cycle, N, S or I.</param>
-        public void Cycle(int ticks, CycleType type)
+        public void Cycle(int ticks)
         {
-
+            Ticks += ticks;
+            foreach (var component in Components)
+            {
+                Cycle(ticks);
+            }
         }
-    }
-
-    /// <summary>
-    /// The type of cycles to apply for a CPU cycle set.
-    /// </summary>
-    public enum CycleType
-    {
-        NonSequential,
-        Sequential,
-        Internal
     }
 
     /// <summary>
