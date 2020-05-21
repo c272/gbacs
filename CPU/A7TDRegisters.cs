@@ -87,6 +87,28 @@ namespace gbacs
 
             throw new Exception("Invalid register referenced, not caught by range check.");
         }
+
+        /// <summary>
+        /// Returns the value of a specific flag from the CPSR register.
+        /// </summary>
+        public bool Get(Flags Flag)
+        {
+            return ((Get(16) >> (int)Flag) & 1) == 1;
+        }
+    }
+
+    /// <summary>
+    /// Represents a register flag for the ARM7TDMi.
+    /// </summary>
+    public enum Flags
+    {
+        T = 5, //state (ARM=0 or THUMB=1)
+        F = 6, //disable FIQ interrupts
+        I = 7, //disable IRQ interrupts
+        V = 28, //overflow flag
+        C = 29, //carry flag (1 = carry/no borrow, 0 = no carry/borrow)
+        Z = 30, //zero flag
+        N = 31 //sign flag
     }
 
     /// <summary>
