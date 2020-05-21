@@ -24,20 +24,24 @@ namespace gbacs.CPU
             //Get the destination register as a reference.
             ref uint Rd = ref cpu.reg.Get((int)((instr & 0x0000F000) >> 12));
 
-            //Get the value of the first operand register.
+            //Get the value of the first operand (op1) register.
             uint Rn = cpu.reg.Get((int)((instr & 0x000F0000) >> 16));
 
             //Get the second operand out (based on the I flag).
             uint op2;
             if (op2Immediate)
             {
-                //8-bit immediate value with 4-bit rotate right.
+                //8-bit immediate value with 4-bit ROR.
                 //Done in steps of 2, so have to multiply.
                 int shiftAmt = (int)((op2Data & 0xF00) >> 8) * 2;
                 uint toShift = op2Data & 0x0FF;
                 op2 = (toShift >> shiftAmt) | (toShift << (32 - shiftAmt));
 
-                //todo: determine if ROR sets the carry flag
+                //Set the carry flag.
+                if (shiftAmt != 0) 
+                {
+                    cpu.reg.Set(Flags.C, (toShift & 1) == 1);
+                }
             }
             else
             {
@@ -97,7 +101,7 @@ namespace gbacs.CPU
                     //rotate right
                     case 0x3:
                         op2 = (Rm >> shiftAmt) | (Rm << (32 - shiftAmt));
-                        carryBit = cpu.reg.Get(Flags.C);
+                        carryBit = (Rm & 1) == 1;
                         break;
 
                     //unknown
