@@ -27,8 +27,11 @@ namespace gbacs.CPU
             //Get the value of the first operand (op1) register.
             uint Rn = cpu.reg.Get((int)((instr & 0x000F0000) >> 16));
 
+            //The shift's carry bit (to be set later).
+            bool? shiftCarryBit = null;
+
             //Get the second operand out (based on the I flag).
-            uint op2;
+            uint op2 = 0x0;
             if (op2Immediate)
             {
                 //8-bit immediate value with 4-bit ROR.
@@ -46,8 +49,7 @@ namespace gbacs.CPU
             else
             {
                 //Register value with 8-bit shift.
-                //Only the lower 8 bits of the register are used.
-                uint Rm = cpu.reg.Get((int)(op2Data & 0x00F)) & 0x000000FF;
+                uint Rm = cpu.reg.Get((int)(op2Data & 0x00F));
                 int shiftAmt = (int)((op2Data & 0xFF0) >> 4);
 
                 //Get the type of shift that's being performed, from bits 6 & 5.
@@ -58,8 +60,12 @@ namespace gbacs.CPU
                 if (shiftByReg)
                 {
                     //Set the shift amount based on the value of the register.
-                    //Register for shift is in bits 11-8.
-                    shiftAmt = (int)cpu.reg.Get((int)((op2Data & 0xF00) >> 8));
+                    //Only the lower 8 bits of the register are used.
+                    shiftAmt = (int)cpu.reg.Get((int)((op2Data & 0xF00) >> 8)) & 0xFF;
+                    if (shiftAmt == 0)
+                    {
+                        op2 = Rm;
+                    }
                 }
                 else
                 {
@@ -71,59 +77,175 @@ namespace gbacs.CPU
                     {
                         switch (shiftType)
                         {
-                            //todo
+                            //LSL, no shift (c unaffected)
+                            case 0:
+                                op2 = Rm;
+                                break;
+
+                            //LSR, taken as LSR#32 (Op2 zeroed, C flag set to bit 31)
+                            case 1:
+                                op2 = 0;
+                                shiftCarryBit = (Rm & 0x80000000) == 0x80000000;
+                                break;
+
+                            //ASR, taken as ASR#32 (Op2 is all bit 31, C is bit 31)
+                            case 2:
+                                shiftCarryBit = (Rm & 0x80000000) == 0x80000000;
+                                if ((bool)shiftCarryBit)
+                                {
+                                    op2 = 0xFFFFFFFF;
+                                    break;
+                                }
+                                op2 = 0;
+                                break;
+
+                            //ROR, taken as RRX#1.
+                            case 3:
+                                shiftCarryBit = (Rm & 1) == 1;
+                                op2 = ((Rm >> 1) & 0x7FFFFFFF);
+                                if (cpu.reg.Get(Flags.C))
+                                {
+                                    op2 |= 0x80000000;
+                                }
+                                break;
+
+                            default:
+                                throw new Exception("Unrecognized zero shift type, were shift bits 5-6 parsed improperly?");
                         }
                     }
                 }
 
-                //Complete the shift.
-                bool carryBit = false;
-                switch (shiftType)
+                //Complete the shift (if shift amount > 0).
+                if (shiftAmt != 0)
                 {
-                    //logical shift left
-                    case 0x0:
-                        op2 = Rm << shiftAmt;
-                        carryBit = (Rm >> 31) == 1;
-                        break;
+                    switch (shiftType)
+                    {
+                        //logical shift left
+                        case 0x0:
+                            op2 = Rm << shiftAmt;
+                            shiftCarryBit = (Rm >> 31) == 1;
+                            break;
 
-                    //logical shift right
-                    case 0x1:
-                        op2 = Rm >> shiftAmt;
-                        carryBit = (Rm & 1) == 1;
-                        break;
+                        //logical shift right
+                        case 0x1:
+                            op2 = Rm >> shiftAmt;
+                            shiftCarryBit = (Rm & 1) == 1;
+                            break;
 
-                    //arithmetic shift right
-                    case 0x2:
-                        op2 = (Rm >> shiftAmt) | (Rm & 0x80000000);
-                        carryBit = (Rm & 1) == 1;
-                        break;
+                        //arithmetic shift right
+                        case 0x2:
+                            op2 = (Rm >> shiftAmt) | (Rm & 0x80000000);
+                            shiftCarryBit = (Rm & 1) == 1;
+                            break;
 
-                    //rotate right
-                    case 0x3:
-                        op2 = (Rm >> shiftAmt) | (Rm << (32 - shiftAmt));
-                        carryBit = (Rm & 1) == 1;
-                        break;
+                        //rotate right
+                        case 0x3:
+                            op2 = (Rm >> shiftAmt) | (Rm << (32 - shiftAmt));
+                            shiftCarryBit = (Rm & 1) == 1;
+                            break;
 
-                    //unknown
-                    default:
-                        throw new Exception("Unknown shift type for DataProc, were shift bits 5-6 parsed improperly?");
-                }
-
-                //Should the carry flag be set? (for logical operations)
-                if (setCondCodes && (opCode.Between(0x0, 0x1) || opCode.Between(0x8, 0x9) || opCode >= 0xC))
-                {
-                    //Set it as whether the calculation returned the expected result.
-                    cpu.reg.Set(Flags.C, carryBit);
+                        //unknown
+                        default:
+                            throw new Exception("Unknown shift type for DataProc, were shift bits 5-6 parsed improperly?");
+                    }
                 }
             }
 
             //Switch on the opcode and perform the actual operation.
+            bool? carryFlag = null;
+            bool? overflowFlag = null;
+            uint result = 0x0;
             switch (opCode)
             {
                 //Logical AND.
-                case 0:
-                    Rd = Rn & op2;
+                case 0x0:
+                    result = Rn & op2;
+                    carryFlag = shiftCarryBit;
                     break;
+
+                //Logical XOR.
+                case 0x1:
+                    result = Rn ^ op2;
+                    carryFlag = shiftCarryBit;
+                    break;
+
+                //Subtraction.
+                case 0x2:
+                    result = Rn - op2;
+                    carryFlag = false;
+                    if (op2 > Rn)
+                    {
+                        carryFlag = true;
+                    }
+                    break;
+
+                //Reverse subtraction.
+                case 0x3:
+                    result = op2 - Rn;
+                    carryFlag = false;
+                    if (Rn > op2)
+                    {
+                        carryFlag = true;
+                    }
+                    break;
+
+                //Addition.
+                case 0x4:
+                    result = Rn + op2;
+                    //Set overflow (MSB change).
+                    if ((result & 0x80000000) != (Rn & 0x80000000))
+                    {
+                        overflowFlag = true;
+                    }
+
+                    //Set carry flag.
+                    carryFlag = false;
+                    if (Rn + op2 > uint.MaxValue)
+                    {
+                        carryFlag = true;
+                    }
+
+                    break;
+
+                //Add with carry.
+                case 0x5:
+                    result = Rn + op2;
+                    if (cpu.reg.Get(Flags.C))
+                    {
+                        result++;
+                    }
+
+                    //Overflow flag (MSB change).
+                    if ((result & 0x80000000) != (Rn & 0x80000000))
+                    {
+                        overflowFlag = true;
+                    }
+
+                    //Set carry flag.
+                    carryFlag = false;
+                    if (Rn + op2 + Convert.ToInt32(cpu.reg.Get(Flags.C)) > uint.MaxValue)
+                    {
+                        carryFlag = true;
+                    }
+                    break;
+
+                //Subtract with carry.
+                case 0x6:
+                    result = Rn - op2 - 1;
+                    if (cpu.reg.Get(Flags.C))
+                    {
+                        result++;
+                    }
+
+                    //Set carry flag.
+                    carryFlag = false;
+                    if (Rn - op2 - 1 + Convert.ToInt32(cpu.reg.Get(Flags.C)) < 0)
+                    {
+                        carryFlag = true;
+                    }
+                    break;
+
+                //Subtract with carry reversed.
             }
         }
     }
